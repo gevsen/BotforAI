@@ -6,12 +6,12 @@ from aiogram.fsm.context import FSMContext
 from datetime import datetime, timezone, timedelta
 
 import keyboards as kb
-from database import Database
+# from database import Database # Удалено: Глобальный экземпляр db больше не используется
 import config
-from .user_handlers import get_user_level
+# from .user_handlers import get_user_level # Удалено: Больше не существует и не используется
 
 common_router = Router()
-db = Database(config.DATABASE_PATH)
+# db = Database(config.DATABASE_PATH) # Удалено: Глобальный экземпляр db больше не используется
 
 async def notify_admins_new_user(bot: Bot, user: types.User):
     """Отправляет уведомление о новом пользователе всем администраторам."""
@@ -37,20 +37,21 @@ async def universal_start_handler(event: types.Message | types.CallbackQuery, st
         await message_source.answer("Действие отменено.")
 
     user = event.from_user
-    is_new_user = await db.add_user(user.id, user.username)
+    # Используем bot["db"] для доступа к базе данных
+    db_instance = bot["db"] 
+    is_new_user = await db_instance.add_user(user.id, user.username)
 
     if is_new_user and user.id not in config.ADMIN_IDS:
-        # <<< ИЗМЕНЕНИЕ ЗДЕСЬ: ЗАПУСК В ФОНОВОМ РЕЖИМЕ >>>
         asyncio.create_task(notify_admins_new_user(bot, user))
     
-    welcome_text = f'Привет, я Arima.AI\n\nТекущее время: {datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M МСК")}\n\nВыберите действие:'
+    time_str = datetime.now(timezone(timedelta(hours=3))).strftime("%H:%M МСК")
+    welcome_text = 'Привет, я Arima.AI\n\nТекущее время: ' + time_str + '\n\nВыберите действие:'
     reply_markup = kb.get_main_menu(user.id, model_status_cache)
 
     if isinstance(event, types.CallbackQuery):
         try:
             await event.message.edit_text(welcome_text, reply_markup=reply_markup)
         except:
-            # Если сообщение не изменилось, просто отвечаем новым
             await event.message.answer(welcome_text, reply_markup=reply_markup)
     else:
         await event.answer(welcome_text, reply_markup=reply_markup)
@@ -65,7 +66,6 @@ async def cancel_handler(callback: types.CallbackQuery, state: FSMContext, bot: 
     await callback.message.edit_text("Действие отменено.")
     await callback.answer()
     
-    # После отмены возвращаем пользователя в соответствующее меню
     if current_state and current_state.startswith("AdminActions"):
         await callback.message.answer("Админ-панель:", reply_markup=kb.get_admin_menu())
     else:
